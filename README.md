@@ -19,7 +19,8 @@ Därutöver rapporterar varje tråd till Console.
 ## Tankar angående anställningsprov
 ### Instruktioner
 Mycket tydliga, och tack vare nya siten lättare att följa. Länkstrukturen lämpar sig bättre
-för att spara under file://, så ingen manipulation av källkodsfilerna behövs längre!
+för att spara under file://, så ingen manipulation av källkodsfilerna behövs längre, 
+såvida man ignorerar fonterna. 
   
 ### Uppgiften från provtagarens perspektiv
 Intressant och lagomt utmanande. Det märks att siten är anpassad för scraping, då länkstruktur
@@ -37,3 +38,6 @@ diskussion under review dock! :) Jag hade brutit ut reader för att hitta stränga
 citationstecken, konkateneringen av url:er, men jag hade nog skippat sådana som beror på 
 http://books.toscrape.com/...
   
+Jag fick en bruten länk på fonter som jag trodde först trodde berodde på tredje-parts CDN,
+men det visade sig vara versionering i url:er som spökade. Blev en intressant överkurs att
+lösa det problemet. :)
