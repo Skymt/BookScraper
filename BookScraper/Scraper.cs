@@ -8,8 +8,8 @@ namespace BookScraper
         static readonly ConcurrentQueue<string> _workload = new();
         static readonly ConcurrentDictionary<string, bool> _process = new();
         static readonly HttpClient _client = new() { BaseAddress = new("http://books.toscrape.com/") };
-        static readonly string[] _fileExtensions = new[] { ".html", ".css", ".js" };
-        static readonly string[] _imageExtension = new[] { ".jpg", ".ico" };
+        static readonly string[] _textExtensions = new[] { ".html", ".css", ".js" };
+        static readonly string[] _fileExtension = new[] { ".jpg", ".ico", ".eot", ".woff", ".ttf", ".svg" };
 
         /// <summary>
         /// Scrape index.html and return the amount of "interesting" links.
@@ -24,7 +24,7 @@ namespace BookScraper
             await ProcessWorkItem(-1);
             return _workload.Count;
         }
-        
+
         /// <summary>
         /// Start threaded processing of the workload.
         /// </summary>
@@ -60,7 +60,7 @@ namespace BookScraper
                 int retries = 3;
                 do
                 {
-                    if (await ProcessWorkItem(threadId)) 
+                    if (await ProcessWorkItem(threadId))
                         retries = 3;
                     else
                     {
@@ -68,7 +68,7 @@ namespace BookScraper
                         await Task.Delay(500);
                         retries--;
                     }
-                } while(retries > 0);
+                } while (retries > 0);
                 Log($"Thread {threadId} exited due to lack of work.", ConsoleColor.Green);
             }
         }
@@ -80,22 +80,26 @@ namespace BookScraper
                 FileInfo localFile = new(Path.Combine(Destination, filePath));
                 localFile.Directory?.Create();
 
-                if (_fileExtensions.Contains(localFile.Extension)) await DownloadFile(filePath, localFile.FullName);
-                else if (_imageExtension.Contains(localFile.Extension)) await DownloadImage(filePath, localFile.FullName);
+                if (_textExtensions.Contains(localFile.Extension)) await DownloadText(filePath, localFile.FullName);
+                else if (_fileExtension.Contains(localFile.Extension)) await DownloadFile(filePath, localFile.FullName);
                 Log($"Thread {threadId} processed {filePath}", ConsoleColor.White);
                 return _process[filePath] = true;
             }
             return false;
         }
-        static async Task DownloadFile(string filePath, string localFilePath)
+        static async Task DownloadText(string filePath, string localFilePath)
         {
             var content = await _client.GetStringAsync(filePath);
-            await File.WriteAllTextAsync(localFilePath, content);
             Scrape(filePath, content);
+            // Fix for fontawesome versioning
+            content = content.Replace("%3Fv=3.2.1", string.Empty);
+            await File.WriteAllTextAsync(localFilePath, content);
         }
-        static async Task DownloadImage(string filePath, string localFilePath)
+        static async Task DownloadFile(string filePath, string localFilePath)
         {
             var content = await _client.GetByteArrayAsync(filePath);
+            // Fix for fontawesome versioning
+            localFilePath = localFilePath.Replace("%3Fv=3.2.1", string.Empty);
             await File.WriteAllBytesAsync(localFilePath, content);
         }
         static void Scrape(string filePath, string fileContent)
@@ -119,14 +123,17 @@ namespace BookScraper
             IEnumerable<string> scanForQuotedStrings()
             {
                 var buffer = string.Empty; var reading = false;
+                var scanChar = '"';
+                if (filePath.EndsWith(".css"))
+                    scanChar = '\'';
                 foreach (var c in fileContent)
                 {
-                    if (c == '"')
+                    if (c == scanChar)
                     {
-                        if (reading) 
-                        { 
-                            yield return buffer; 
-                            buffer = string.Empty; 
+                        if (reading)
+                        {
+                            yield return buffer;
+                            buffer = string.Empty;
                         }
                         reading = !reading;
                     }
@@ -139,9 +146,12 @@ namespace BookScraper
                 if (s.Contains(' ')) return false;
                 if (!s.Contains('.')) return false;
 
+                // Fix for fontawesome versioning
+                if (s.EndsWith("%3Fv=3.2.1")) return true;
+
                 var extension = s[s.LastIndexOf('.')..];
-                if (_fileExtensions.Contains(extension)) return true;
-                if (_imageExtension.Contains(extension)) return true;
+                if (_textExtensions.Contains(extension)) return true;
+                if (_fileExtension.Contains(extension)) return true;
                 return false;
             }
             string mergePath(string s)
@@ -149,17 +159,17 @@ namespace BookScraper
                 if (s.StartsWith('/')) return s;
                 if (!filePath.Contains('/')) return s;
 
-                var basePath = filePath.Split('/');
+                var basePath = filePath.Split('/')[..^1];
                 var relativePath = s.Split('/');
                 var parents = relativePath.TakeWhile(p => p == "..").Count();
 
-                var newPath = basePath[..^(parents + 1)].Concat(relativePath[parents..]);
+                var newPath = basePath[..^parents].Concat(relativePath[parents..]);
                 return string.Join('/', newPath);
             }
         }
 
         static readonly object _consoleLock = new();
-        static void Log(string message, ConsoleColor color) 
+        static void Log(string message, ConsoleColor color)
         {
             lock (_consoleLock)
             {
