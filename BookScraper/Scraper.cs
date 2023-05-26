@@ -8,8 +8,12 @@ namespace BookScraper
         static readonly ConcurrentQueue<string> _workload = new();
         static readonly ConcurrentDictionary<string, bool> _process = new();
         static readonly HttpClient _client = new() { BaseAddress = new("http://books.toscrape.com/") };
-        static readonly string[] _textExtensions = new[] { ".html", ".css ", ".js" };
-        static readonly string[] _fileExtension = new[] { ".jpeg", ".ico", ".eot", ".woff", ".ttf", ".svg" };
+        static readonly string[] _textExtensions = new[] { ".html", ".css", ".js" };
+        static readonly string[] _fileExtension = new[] { ".jpg", ".ico", ".eot", ".woff", ".ttf", ".svg" };
+
+        //Links to fontawesome files contain a version query string, percent encoded.
+        //This must be purged for site to load from local file system
+        static readonly string fontAwesomeFix = "%3Fv=3.2.1";
 
         /// <summary>
         /// Scrape index.html and return the amount of "interesting" links.
@@ -36,7 +40,6 @@ namespace BookScraper
         {
             // Ensure threads is set to valid value
             if (threads < 1) throw new ArgumentOutOfRangeException(nameof(threads));
-            else threads = 1;
 
             if (!_workload.Any())
             {
@@ -86,6 +89,8 @@ namespace BookScraper
 
                 if (_textExtensions.Contains(localFile.Extension)) await DownloadText(filePath, localFile.FullName);
                 else if (_fileExtension.Contains(localFile.Extension)) await DownloadFile(filePath, localFile.FullName);
+                else if (localFile.FullName.EndsWith(fontAwesomeFix)) await DownloadFile(filePath, localFile.FullName);
+
                 Log($"Thread {threadId} processed {filePath}", ConsoleColor.White);
                 return _process[filePath] = true;
             }
@@ -95,10 +100,12 @@ namespace BookScraper
         {
             var content = await _client.GetStringAsync(filePath);
             Scrape(filePath, content);
+            content = content.Replace(fontAwesomeFix, string.Empty);
             await File.WriteAllTextAsync(localFilePath, content);
         }
         static async Task DownloadFile(string filePath, string localFilePath)
         {
+            localFilePath = localFilePath.Replace(fontAwesomeFix, string.Empty);
             var content = await _client.GetByteArrayAsync(filePath);
             await File.WriteAllBytesAsync(localFilePath, content);
         }
@@ -144,6 +151,7 @@ namespace BookScraper
                 if (s.Contains(' ')) return false;
                 if (!s.Contains('.')) return false;
 
+                if(s.EndsWith(fontAwesomeFix)) return true;
                 var extension = s[s.LastIndexOf('.')..];
                 if (_textExtensions.Contains(extension)) return true;
                 if (_fileExtension.Contains(extension)) return true;
