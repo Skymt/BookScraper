@@ -25,8 +25,10 @@ namespace BookScraper
         {
             // Report progress to console window title (This is technically +1 in threads, but since it sleeps a lot I don't count it...)
             using Timer _ = new(_ => Console.Title = $"Total: {_remoteToLocalMap.Count}, Remaining: {_textQueue.Count + _fileQueue.Count}", null, 50, 100);
+
             // Sanity check of the thread count
             if (threadCount < 1) throw new ArgumentOutOfRangeException(nameof(threadCount), "At least one thread is required to run.");
+
             // Setup the workers
             var threads = Enumerable.Range(1, threadCount).Select(async id =>
             {
@@ -74,8 +76,8 @@ namespace BookScraper
             }
             return false;
         }
-
-        static readonly Regex _linkPattern = new(@"^((..\/)+|(\/))?([a-z0-9_-]+\/)*([a-zA-Z0-9-.]+)\.([a-zA-Z0-9-]+)(%.*)?$", RegexOptions.Compiled);
+        //^(?:[a-z]+:\/\/)?\/?([^\/]*\.)+[^\.\?]+\.[^?]*$
+        static readonly Regex _linkPattern = new(@"^(?!.*\/\/)?\/?([^\/]*\.)+[^\.\?]+\.[^?]*$", RegexOptions.Compiled);
         static readonly Regex _stripQueryPattern = new(@"[^%]+", RegexOptions.Compiled);
         static readonly char[] _quotationChars = new[] { '"', '\'' };
         static int Scrape(string remoteLink, string linkContent)
@@ -143,10 +145,10 @@ namespace BookScraper
 
             var content = linkContent.AsSpan();
             var ranges = Test(content); var counter = 0;
-            foreach(var range in ranges) 
+            foreach (var range in ranges)
             {
                 var quotedString = content[range].ToString();
-                if(_linkPattern.IsMatch(quotedString))
+                if (_linkPattern.IsMatch(quotedString))
                 {
                     var file = absoluteFilePath(quotedString);
                     if (_remoteToLocalMap.TryAdd(file, null))
@@ -157,10 +159,16 @@ namespace BookScraper
 
                         switch (localFile.Extension)
                         {  // note: percent encoded query is stripped by the _stripQueryPattern regex
-                            case ".html": case ".css": case ".js":
+                            case ".html":
+                            case ".css":
+                            case ".js":
                                 _textQueue.Enqueue(file); break;
-                            case ".jpg": case ".ico": case ".eot":
-                            case ".woff": case ".ttf": case ".svg":
+                            case ".jpg":
+                            case ".ico":
+                            case ".eot":
+                            case ".woff":
+                            case ".ttf":
+                            case ".svg":
                                 _fileQueue.Enqueue(file); break;
                         }
 
@@ -193,7 +201,7 @@ namespace BookScraper
                     quoteChar = c;
                     start = index + 1;
                 }
-                else if(quoteChar == c)
+                else if (quoteChar == c)
                 {
                     ranges.Add(start..index);
                     quoteChar = null;
