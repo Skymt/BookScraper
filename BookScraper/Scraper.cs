@@ -8,8 +8,8 @@ namespace BookScraper
         static readonly ConcurrentQueue<string> _workload = new();
         static readonly ConcurrentDictionary<string, bool> _process = new();
         static readonly HttpClient _client = new() { BaseAddress = new("http://books.toscrape.com/") };
-        static readonly string[] _textExtensions = new[] { ".html", ".css", ".js" };
-        static readonly string[] _fileExtension = new[] { ".jpg", ".ico", ".eot", ".woff", ".ttf", ".svg" };
+        static readonly string[] _textExtensions = new[] { ".html", ".css ", ".js" };
+        static readonly string[] _fileExtension = new[] { ".jpeg", ".ico", ".eot", ".woff", ".ttf", ".svg" };
 
         /// <summary>
         /// Scrape index.html and return the amount of "interesting" links.
@@ -34,6 +34,10 @@ namespace BookScraper
         /// <param name="threads">The amount of threads to do work.</param>
         public static void Process(int threads = 1)
         {
+            // Ensure threads is set to valid value
+            if (threads < 1) throw new ArgumentOutOfRangeException(nameof(threads));
+            else threads = 1;
+
             if (!_workload.Any())
             {
                 _workload.Enqueue("index.html");
@@ -41,6 +45,7 @@ namespace BookScraper
             }
 
             int currentCompleted = 1;
+            
             using var _ = new Timer(_ =>
             {
                 var newCurrentCompleted = _process.Where(kvp => kvp.Value).Count();
@@ -49,10 +54,10 @@ namespace BookScraper
                     currentCompleted = newCurrentCompleted;
                     Log($"Current workload: {_workload.Count:0000}, Completed: {currentCompleted}", ConsoleColor.Red);
                 }
-            }, null, 50, 1000);
+            }, null, 50, 100);
 
             Task.WaitAll(Enumerable.Range(1, threads).Select(worker).ToArray());
-            Console.ForegroundColor = ConsoleColor.White;
+            Console.ResetColor();
             return;
 
             static async Task worker(int threadId)
@@ -64,9 +69,8 @@ namespace BookScraper
                         retries = 3;
                     else
                     {
-                        Log($"No work found for thread {threadId}... retrying ({retries})", ConsoleColor.DarkGreen);
+                        Log($"No work found for thread {threadId}... retrying ({retries--})", ConsoleColor.DarkGreen);
                         await Task.Delay(500);
-                        retries--;
                     }
                 } while (retries > 0);
                 Log($"Thread {threadId} exited due to lack of work.", ConsoleColor.Green);
@@ -91,15 +95,11 @@ namespace BookScraper
         {
             var content = await _client.GetStringAsync(filePath);
             Scrape(filePath, content);
-            // Fix for fontawesome versioning
-            content = content.Replace("%3Fv=3.2.1", string.Empty);
             await File.WriteAllTextAsync(localFilePath, content);
         }
         static async Task DownloadFile(string filePath, string localFilePath)
         {
             var content = await _client.GetByteArrayAsync(filePath);
-            // Fix for fontawesome versioning
-            localFilePath = localFilePath.Replace("%3Fv=3.2.1", string.Empty);
             await File.WriteAllBytesAsync(localFilePath, content);
         }
         static void Scrape(string filePath, string fileContent)
@@ -123,12 +123,10 @@ namespace BookScraper
             IEnumerable<string> scanForQuotedStrings()
             {
                 var buffer = string.Empty; var reading = false;
-                var scanChar = '"';
-                if (filePath.EndsWith(".css"))
-                    scanChar = '\'';
+                var scanChars = new[] { '"', '\'' };
                 foreach (var c in fileContent)
                 {
-                    if (c == scanChar)
+                    if (scanChars.Contains(c))
                     {
                         if (reading)
                         {
@@ -145,9 +143,6 @@ namespace BookScraper
                 if (s.Contains("//")) return false;
                 if (s.Contains(' ')) return false;
                 if (!s.Contains('.')) return false;
-
-                // Fix for fontawesome versioning
-                if (s.EndsWith("%3Fv=3.2.1")) return true;
 
                 var extension = s[s.LastIndexOf('.')..];
                 if (_textExtensions.Contains(extension)) return true;
@@ -168,14 +163,11 @@ namespace BookScraper
             }
         }
 
-        static readonly object _consoleLock = new();
         static void Log(string message, ConsoleColor color)
         {
-            lock (_consoleLock)
-            {
-                Console.ForegroundColor = color;
-                Console.WriteLine(message);
-            }
+            Console.ForegroundColor = color;
+            Console.Write(message);
+            Console.Write(Environment.NewLine);
         }
     }
 }
